@@ -8,7 +8,12 @@ import (
 	"os"
 )
 
-const port = ":80"
+const (
+	httpPort  = ":80"
+	httpsPort = ":443"
+	certFile  = "/etc/letsencrypt/live/skyefactory.com/fullchain.pem"
+	keyFile   = "/etc/letsencrypt/live/skyefactory.com/privkey.pem"
+)
 
 func main() {
 	logFile, err := os.OpenFile("access.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
@@ -29,11 +34,21 @@ func main() {
 		log.Printf("Warning: Could not load 404 template: %v", err)
 	}
 
-	fmt.Println("Reverse proxy running on http://localhost" + port)
+	handler := createProxyHandler(routes, notFound, fileLogger)
 
-	http.HandleFunc("/", createProxyHandler(routes, notFound, fileLogger))
-
-	if err := http.ListenAndServe(port, nil); err != nil {
-		log.Fatalf("server failed: %v", err)
+	// Check if certificates exist
+	if _, err := os.Stat(certFile); err == nil {
+		if _, err := os.Stat(keyFile); err == nil {
+			// Start HTTPS server on port 443
+			fmt.Println("Reverse proxy running on port 443")
+			http.HandleFunc("/", handler)
+			if err := http.ListenAndServeTLS(httpsPort, certFile, keyFile, nil); err != nil {
+				log.Fatalf("HTTPS server failed: %v", err)
+			}
+		} else {
+			log.Printf("Private key not found: %v", err)
+		}
+	} else {
+		log.Printf("Certificate not found: %v", err)
 	}
 }
